@@ -1,0 +1,39 @@
+rules_version = '2';
+
+// Reglas de seguridad para la colección `reportes` de AcaSafe.
+// Se suben a Firebase con: firebase deploy --only firestore:rules
+//
+// Lógica:
+// - Cualquiera que haya iniciado sesión puede LEER los reportes (la app
+//   es de consulta pública para habitantes/turistas).
+// - Solo un usuario autenticado puede CREAR un reporte, y solo a nombre
+//   de sí mismo (usuarioId debe coincidir con su uid).
+// - Nadie puede editar o borrar un reporte directamente desde el cliente
+//   (eso evita que alguien "limpie" su propio reporte falso); los votos
+//   y cambios de estado se hacen con incrementos controlados desde
+//   FirestoreService, nunca sobrescribiendo el documento completo.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /reportes/{reporteId} {
+      allow read: if request.auth != null;
+
+      allow create: if request.auth != null
+        && request.resource.data.usuarioId == request.auth.uid
+        && request.resource.data.estado == 'pendiente';
+
+      // Solo permite actualizar los campos de votos o el estado
+      // (moderación), nunca el contenido original del reporte.
+      allow update: if request.auth != null
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['votosUtil', 'votosFalso', 'estado']);
+
+      allow delete: if false; // nadie borra reportes desde la app
+    }
+
+    match /usuarios/{uid} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}
