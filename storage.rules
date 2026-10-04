@@ -1,0 +1,21 @@
+rules_version = '2';
+
+// Reglas de seguridad para Firebase Storage (fotos de los reportes).
+// Se suben desde la consola de Firebase: Storage > Rules, o con
+// `firebase deploy --only storage`.
+//
+// Lógica:
+// - Cualquiera con sesión iniciada puede VER las fotos (son parte de
+//   la consulta pública de reportes).
+// - Solo un usuario autenticado puede SUBIR, y se limita cada archivo
+//   a 5MB y a que sea una imagen, para evitar abuso del storage.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /reportes/{archivo} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+  }
+}
