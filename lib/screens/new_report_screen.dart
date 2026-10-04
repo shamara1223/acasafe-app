@@ -105,9 +105,26 @@ class _NewReportScreenState extends State<NewReportScreen> {
 
     setState(() => _guardando = true);
     try {
+      // La subida de foto se intenta aparte: si Storage todavía no está
+      // activo en el proyecto de Firebase (ej. mientras se resuelve la
+      // cuenta de facturación), el reporte se guarda igual, solo sin
+      // foto, en vez de bloquear por completo el envío.
       String? fotoUrl;
       if (_foto != null) {
-        fotoUrl = await _storageService.subirFotoReporte(_foto!);
+        try {
+          fotoUrl = await _storageService.subirFotoReporte(_foto!);
+        } catch (_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'No se pudo subir la foto (Storage no disponible todavía). '
+                  'El reporte se guardará sin foto.',
+                ),
+              ),
+            );
+          }
+        }
       }
 
       final reporte = Reporte(
