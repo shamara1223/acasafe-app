@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../models/reporte.dart';
 import '../services/auth_service.dart';
@@ -9,9 +10,6 @@ import 'new_report_screen.dart';
 import 'report_detail_screen.dart';
 
 /// Pantalla principal: mapa con los reportes activos.
-/// Esta es la Fase 1 del proyecto (consulta y reporte ciudadano);
-/// la Fase 2 (mapas de calor estadísticos) se construye encima de
-/// esta misma colección de Firestore, ya con suficientes reportes.
 class HomeMapScreen extends StatefulWidget {
   const HomeMapScreen({super.key});
 
@@ -23,19 +21,17 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
   final _firestoreService = FirestoreService();
   final _authService = AuthService();
 
-  static const _centroAcapulco = CameraPosition(
-    target: LatLng(acapulcoLat, acapulcoLng),
-    zoom: 12.5,
-  );
+  // Coordenadas iniciales (Acapulco)
+  static const _centroAcapulco = LatLng(acapulcoLat, acapulcoLng);
 
-  Set<Marker> _marcadoresDesdeReportes(List<Reporte> reportes) {
+  // Convertir los reportes a marcadores de flutter_map
+  List<Marker> _marcadoresDesdeReportes(List<Reporte> reportes) {
     return reportes.map((r) {
       return Marker(
-        markerId: MarkerId(r.id!),
-        position: LatLng(r.ubicacion.latitude, r.ubicacion.longitude),
-        infoWindow: InfoWindow(
-          title: nombreTipoReporte[r.tipo] ?? r.tipo,
-          snippet: r.colonia,
+        point: LatLng(r.ubicacion.latitude, r.ubicacion.longitude),
+        width: 40,
+        height: 40,
+        child: GestureDetector(
           onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute(
@@ -43,9 +39,14 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
               ),
             );
           },
+          child: const Icon(
+            Icons.location_on,
+            color: Colors.red,
+            size: 40,
+          ),
         ),
       );
-    }).toSet();
+    }).toList();
   }
 
   @override
@@ -70,11 +71,22 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
-          return GoogleMap(
-            initialCameraPosition: _centroAcapulco,
-            markers: _marcadoresDesdeReportes(snapshot.data!),
-            myLocationEnabled: true,
-            myLocationButtonEnabled: true,
+          
+          // ¡Aquí está el mapa de OpenStreetMap!
+          return FlutterMap(
+            options: const MapOptions(
+              initialCenter: _centroAcapulco,
+              initialZoom: 12.5,
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+                userAgentPackageName: 'com.example.acasafe_app',
+              ),
+              MarkerLayer(
+                markers: _marcadoresDesdeReportes(snapshot.data!),
+              ),
+            ],
           );
         },
       ),

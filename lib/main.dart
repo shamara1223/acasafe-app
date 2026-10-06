@@ -1,21 +1,22 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/date_symbol_data_local.dart'; // Importante para el formato de fechas
 
+import 'firebase_options.dart'; // <-- DESCOMENTADO
 import 'screens/home_map_screen.dart';
 import 'screens/login_screen.dart';
 import 'services/auth_service.dart';
 
-// Este archivo se genera localmente para cada quien con:
-//   flutterfire configure
-// y NO se sube a GitHub (ver .gitignore) porque trae las credenciales
-// del proyecto de Firebase. Instrucciones completas en el README.
-// import 'firebase_options.dart';
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
   await Firebase.initializeApp(
-    // options: DefaultFirebaseOptions.currentPlatform,
+    options: DefaultFirebaseOptions.currentPlatform, // <-- DESCOMENTADO
   );
+  
+  // Esta línea debe ir DENTRO de main() para que no dé error
+  await initializeDateFormatting(); 
+  
   runApp(const AcaSafeApp());
 }
 
