@@ -3,10 +3,29 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 /// Categoría general del reporte. Sirve para agrupar tipos específicos
 /// y para elegir el ícono/color en el mapa.
 enum CategoriaReporte {
+  delictivo, // robo, asalto, riña, vandalismo, actividad sospechosa
+  social, // ruido, consumo en vía pública, bloqueos, persona extraviada
+  ambiental, // basura, quemas, contaminación de agua/playa, tala ilegal
   infraestructura, // bache, poste caído, alumbrado, semáforo
-  seguridad, // robo, asalto, riña
-  clima, // inundación, derrumbe, árbol caído
+  riesgoNatural, // inundación, derrumbe, árbol caído
   otro,
+}
+
+/// Convierte el texto guardado en Firestore a [CategoriaReporte].
+/// Los reportes viejos usan 'seguridad' y 'clima' (categorías que ya no
+/// existen); se mapean a las nuevas para que no truene la lectura.
+/// Cualquier otro valor desconocido cae en [CategoriaReporte.otro].
+CategoriaReporte categoriaDesdeTexto(String? valor) {
+  switch (valor) {
+    case 'seguridad':
+      return CategoriaReporte.delictivo;
+    case 'clima':
+      return CategoriaReporte.riesgoNatural;
+  }
+  return CategoriaReporte.values.firstWhere(
+    (c) => c.name == valor,
+    orElse: () => CategoriaReporte.otro,
+  );
 }
 
 /// Estado del reporte dentro del flujo de moderación.
@@ -68,10 +87,7 @@ class Reporte {
     return Reporte(
       id: id,
       tipo: map['tipo'] as String,
-      categoria: CategoriaReporte.values.firstWhere(
-        (c) => c.name == map['categoria'],
-        orElse: () => CategoriaReporte.otro,
-      ),
+      categoria: categoriaDesdeTexto(map['categoria'] as String?),
       colonia: map['colonia'] as String,
       ubicacion: map['ubicacion'] as GeoPoint,
       descripcion: map['descripcion'] as String,

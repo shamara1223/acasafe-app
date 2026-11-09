@@ -1,6 +1,7 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
@@ -36,8 +37,9 @@ class _NewReportScreenState extends State<NewReportScreen> {
   final _storageService = StorageService();
   final _authService = AuthService();
 
+  CategoriaReporte? _categoriaSeleccionada;
   String? _tipoSeleccionado;
-  File? _foto;
+  Uint8List? _foto;
   Position? _ubicacionActual;
   String _colonia = '';
   bool _guardando = false;
@@ -55,24 +57,53 @@ class _NewReportScreenState extends State<NewReportScreen> {
       final permiso = await Geolocator.requestPermission();
       if (permiso == LocationPermission.denied ||
           permiso == LocationPermission.deniedForever) {
+        _avisarUbicacionNoDisponible();
         return;
       }
-      final pos = await Geolocator.getCurrentPosition();
-      final lugares = await placemarkFromCoordinates(
-        pos.latitude,
-        pos.longitude,
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          timeLimit: Duration(seconds: 15),
+        ),
       );
-      setState(() {
-        _ubicacionActual = pos;
-        _colonia = lugares.isNotEmpty
-            ? (lugares.first.subLocality?.isNotEmpty == true
+      if (!mounted) return;
+      // Se guarda la posición antes del geocoding para no perderla si
+      // este falla (en web, geocoding no tiene implementación).
+      setState(() => _ubicacionActual = pos);
+
+      var colonia = 'Acapulco de Juárez';
+      if (!kIsWeb) {
+        try {
+          final lugares = await placemarkFromCoordinates(
+            pos.latitude,
+            pos.longitude,
+          );
+          if (lugares.isNotEmpty) {
+            colonia = lugares.first.subLocality?.isNotEmpty == true
                 ? lugares.first.subLocality!
-                : lugares.first.locality ?? 'Acapulco de Juárez')
-            : 'Acapulco de Juárez';
-      });
+                : lugares.first.locality ?? 'Acapulco de Juárez';
+          }
+        } catch (_) {
+          // Sin colonia exacta; se queda el valor por defecto.
+        }
+      }
+      if (!mounted) return;
+      setState(() => _colonia = colonia);
+    } catch (_) {
+      _avisarUbicacionNoDisponible();
     } finally {
       if (mounted) setState(() => _obteniendoUbicacion = false);
     }
+  }
+
+  void _avisarUbicacionNoDisponible() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'No se pudo obtener tu ubicación. Revisa los permisos de ubicación.',
+        ),
+      ),
+    );
   }
 
   Future<void> _elegirFoto() async {
@@ -82,15 +113,18 @@ class _NewReportScreenState extends State<NewReportScreen> {
       imageQuality: 70,
     );
     if (archivo != null) {
-      setState(() => _foto = File(archivo.path));
+      final bytes = await archivo.readAsBytes();
+      setState(() => _foto = bytes);
     }
   }
 
   Future<void> _guardarReporte() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_tipoSeleccionado == null) {
+    if (_categoriaSeleccionada == null || _tipoSeleccionado == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Elige qué tipo de incidencia es.')),
+        const SnackBar(
+          content: Text('Elige la categoría y el tipo de incidencia.'),
+        ),
       );
       return;
     }
@@ -113,7 +147,8 @@ class _NewReportScreenState extends State<NewReportScreen> {
       if (_foto != null) {
         try {
           fotoUrl = await _storageService.subirFotoReporte(_foto!);
-        } catch (_) {
+        } catch (e) {
+          debugPrint('Error al subir la foto del reporte: $e');
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -170,18 +205,62 @@ class _NewReportScreenState extends State<NewReportScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            DropdownButtonFormField<String>(
-              initialValue: _tipoSeleccionado,
-              decoration: const InputDecoration(labelText: '¿Qué pasó?'),
-              items: tiposDeReporte.keys
-                  .map((clave) => DropdownMenuItem(
-                        value: clave,
-                        child: Text(nombreTipoReporte[clave] ?? clave),
-                      ))
-                  .toList(),
-              onChanged: (v) => setState(() => _tipoSeleccionado = v),
-              validator: (v) => v == null ? 'Elige un tipo' : null,
+            Text(
+              '¿Qué tipo de incidencia es?',
+              style: Theme.of(context).textTheme.titleSmall,
             ),
+            const SizedBox(height: 8),
+            // Primero la categoría; el dropdown de abajo solo muestra los
+            // tipos de la categoría elegida.
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: CategoriaReporte.values.map((c) {
+                final color = colorPorCategoria(c);
+                final elegida = _categoriaSeleccionada == c;
+                return ChoiceChip(
+                  avatar: Icon(
+                    infoCategoria[c]!.icono,
+                    size: 18,
+                    color: elegida ? Colors.white : color,
+                  ),
+                  label: Text(infoCategoria[c]!.nombre),
+                  selected: elegida,
+                  showCheckmark: false,
+                  selectedColor: color,
+                  labelStyle: TextStyle(color: elegida ? Colors.white : null),
+                  side: BorderSide(color: color),
+                  onSelected: (_) {
+                    if (elegida) return;
+                    final tipos = tiposDeCategoria(c);
+                    setState(() {
+                      _categoriaSeleccionada = c;
+                      // Si la categoría solo tiene un tipo (ej. "Otro"),
+                      // se elige solo.
+                      _tipoSeleccionado = tipos.length == 1 ? tipos.first : null;
+                    });
+                  },
+                );
+              }).toList(),
+            ),
+            if (_categoriaSeleccionada != null) ...[
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                // La key fuerza a recrear el campo al cambiar de categoría,
+                // para que no conserve un tipo de otra categoría.
+                key: ValueKey(_categoriaSeleccionada),
+                initialValue: _tipoSeleccionado,
+                decoration: const InputDecoration(labelText: '¿Qué pasó?'),
+                items: tiposDeCategoria(_categoriaSeleccionada!)
+                    .map((clave) => DropdownMenuItem(
+                          value: clave,
+                          child: Text(nombreTipoReporte[clave] ?? clave),
+                        ))
+                    .toList(),
+                onChanged: (v) => setState(() => _tipoSeleccionado = v),
+                validator: (v) => v == null ? 'Elige un tipo' : null,
+              ),
+            ],
             const SizedBox(height: 16),
             TextFormField(
               controller: _descripcionCtrl,
@@ -209,7 +288,7 @@ class _NewReportScreenState extends State<NewReportScreen> {
               const SizedBox(height: 8),
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: Image.file(_foto!, height: 160, fit: BoxFit.cover),
+                child: Image.memory(_foto!, height: 160, fit: BoxFit.cover),
               ),
             ],
             const SizedBox(height: 16),

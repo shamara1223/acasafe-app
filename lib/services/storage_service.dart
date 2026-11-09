@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:uuid/uuid.dart';
@@ -9,10 +9,24 @@ class StorageService {
   final FirebaseStorage _storage = FirebaseStorage.instance;
   final _uuid = const Uuid();
 
-  Future<String> subirFotoReporte(File archivo) async {
+  StorageService() {
+    // Por defecto Storage reintenta durante varios minutos (sobre todo en
+    // web si el servicio no está habilitado); se acorta para fallar rápido.
+    _storage.setMaxUploadRetryTime(const Duration(seconds: 15));
+    _storage.setMaxOperationRetryTime(const Duration(seconds: 15));
+  }
+
+  Future<String> subirFotoReporte(Uint8List bytes) async {
     final nombre = '${_uuid.v4()}.jpg';
     final ref = _storage.ref().child('reportes/$nombre');
-    final tarea = await ref.putFile(archivo);
-    return tarea.ref.getDownloadURL();
+    final tarea = await ref
+        .putData(
+          bytes,
+          SettableMetadata(contentType: 'image/jpeg'),
+        )
+        .timeout(const Duration(seconds: 20));
+    return tarea.ref
+        .getDownloadURL()
+        .timeout(const Duration(seconds: 20));
   }
 }
