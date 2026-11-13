@@ -8,6 +8,7 @@ import '../services/firestore_service.dart';
 import '../utils/constants.dart';
 import '../utils/filtros_reporte.dart';
 import '../widgets/capa_calor.dart';
+import '../widgets/resumen_reciente.dart';
 import 'new_report_screen.dart';
 import 'report_detail_screen.dart';
 
@@ -34,8 +35,19 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
   // Coordenadas iniciales (Acapulco)
   static const _centroAcapulco = LatLng(acapulcoLat, acapulcoLng);
 
+  // A partir de este ancho el resumen se muestra como panel lateral.
+  static const double _anchoPanelLateral = 840;
+
+  static const double _altoBotonReportar = 60;
+  static const double _altoLeyendaPlegada = 36;
+
   FiltrosReporte _filtros = FiltrosReporte.inicial();
   bool _leyendaAbierta = false;
+  bool _resumenAbierto = false;
+
+  // Se actualiza en cada build (LayoutBuilder); lo usan los toques para
+  // saber si el resumen y la leyenda comparten espacio.
+  bool _esAncho = false;
   _VistaMapa _vista = _VistaMapa.marcadores;
 
   // Último lote recibido del stream; el bottom sheet de filtros lo usa
@@ -345,7 +357,12 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             InkWell(
-              onTap: () => setState(() => _leyendaAbierta = !_leyendaAbierta),
+              onTap: () => setState(() {
+                _leyendaAbierta = !_leyendaAbierta;
+                // En celular, abrir la leyenda pliega el resumen (ver
+                // _alternarResumen).
+                if (_leyendaAbierta && !_esAncho) _resumenAbierto = false;
+              }),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -426,6 +443,197 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
     );
   }
 
+  void _abrirReporte(Reporte r) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => ReportDetailScreen(reporte: r)),
+    );
+  }
+
+  void _alternarResumen() {
+    setState(() {
+      _resumenAbierto = !_resumenAbierto;
+      // En celular el resumen y la leyenda comparten espacio: al abrir
+      // uno se pliega la otra para que no se encimen.
+      if (_resumenAbierto && !_esAncho) _leyendaAbierta = false;
+    });
+  }
+
+  // Barra "Resumen reciente": plegada por defecto, se abre con un toque.
+  // - En celular se despliega ahí mismo, debajo del contador, con
+  //   scroll interno si no cabe.
+  // - En pantallas anchas solo es el botón; el contenido va en el panel
+  //   lateral (ver _panelLateralResumen).
+  Widget _resumenDesplegable(bool esAncho) {
+    final tema = Theme.of(context);
+    final abiertoAqui = _resumenAbierto && !esAncho;
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 400),
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        alignment: Alignment.topCenter,
+        child: Material(
+          elevation: 2,
+          borderRadius: BorderRadius.circular(20),
+          color: tema.colorScheme.surface,
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Semantics(
+                button: true,
+                expanded: _resumenAbierto,
+                child: InkWell(
+                  onTap: _alternarResumen,
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    child: Row(
+                      // Plegado es un chip compacto; abierto ocupa todo
+                      // el ancho del panel.
+                      mainAxisSize:
+                          abiertoAqui ? MainAxisSize.max : MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.insights,
+                          size: 20,
+                          color: tema.colorScheme.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        if (abiertoAqui)
+                          Expanded(child: _tituloResumen(conAclaracion: true))
+                        else
+                          _tituloResumen(conAclaracion: false),
+                        const SizedBox(width: 4),
+                        Icon(
+                          _resumenAbierto
+                              ? (esAncho
+                                  ? Icons.chevron_right
+                                  : Icons.expand_less)
+                              : (esAncho
+                                  ? Icons.chevron_left
+                                  : Icons.expand_more),
+                          size: 20,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              if (abiertoAqui) ...[
+                const Divider(height: 1),
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                    child: ResumenReciente(onAbrirReporte: _abrirReporte),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Título del resumen. Con el panel abierto lleva una línea que aclara
+  // de qué periodo son los datos y que no siguen los filtros del mapa
+  // (el resumen hace su propia consulta).
+  Widget _tituloResumen({required bool conAclaracion}) {
+    final tema = Theme.of(context);
+    const titulo = Text(
+      'Resumen reciente',
+      style: TextStyle(fontWeight: FontWeight.bold),
+    );
+    if (!conAclaracion) return titulo;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        titulo,
+        Text(
+          'Últimos 7 días · No aplica los filtros del mapa',
+          style: tema.textTheme.bodySmall?.copyWith(
+            color: tema.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Panel lateral del resumen para pantallas anchas (tablet, escritorio).
+  // Va junto al mapa, no encima, así no tapa ningún control.
+  Widget _panelLateralResumen() {
+    final tema = Theme.of(context);
+    return Material(
+      color: tema.colorScheme.surface,
+      elevation: 4,
+      child: SizedBox(
+        width: 360,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 4, 8),
+              child: Row(
+                children: [
+                  Icon(Icons.insights, color: tema.colorScheme.primary),
+                  const SizedBox(width: 8),
+                  Expanded(child: _tituloResumen(conAclaracion: true)),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    tooltip: 'Cerrar resumen',
+                    onPressed: _alternarResumen,
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: ResumenReciente(onAbrirReporte: _abrirReporte),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Botón principal de la pantalla: grande y siempre visible. Usa el
+  // color primario del tema (verde azulado intenso) con texto blanco, que
+  // no es el color de ninguna categoría de reporte.
+  Widget _botonReportar() {
+    final colores = Theme.of(context).colorScheme;
+    return FilledButton.icon(
+      onPressed: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const NewReportScreen()),
+        );
+      },
+      style: FilledButton.styleFrom(
+        backgroundColor: colores.primary,
+        foregroundColor: colores.onPrimary,
+        minimumSize: const Size(0, _altoBotonReportar),
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        elevation: 6,
+        shadowColor: Colors.black54,
+        shape: const StadiumBorder(
+          side: BorderSide(color: Colors.white, width: 2),
+        ),
+        textStyle: const TextStyle(
+          fontSize: 17,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 0.2,
+        ),
+      ),
+      icon: const Icon(Icons.add_alert, size: 26),
+      label: const Text('Reportar incidente'),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -448,78 +656,127 @@ class _HomeMapScreenState extends State<HomeMapScreen> {
           ),
         ],
       ),
-      body: StreamBuilder<List<Reporte>>(
-        stream: _streamReportes,
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(child: Text('Error al cargar reportes: ${snapshot.error}'));
-          }
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final esAncho = constraints.maxWidth >= _anchoPanelLateral;
+          _esAncho = esAncho;
+          // Margen del sistema abajo (barra de inicio del iPhone).
+          final margenInferior = MediaQuery.paddingOf(context).bottom;
 
-          _reportes = snapshot.data!;
-          final visibles = _filtros.aplicar(_reportes);
-          _visibles = visibles;
-
-          // ¡Aquí está el mapa de OpenStreetMap!
-          return Stack(
+          // El mapa siempre es el primer hijo del Row, así conserva su
+          // estado aunque se abra o cierre el panel lateral.
+          return Row(
             children: [
-              // Al cambiar de vista solo cambia la última capa; el
-              // FlutterMap es el mismo, así que conserva zoom y posición.
-              FlutterMap(
-                options: MapOptions(
-                  initialCenter: _centroAcapulco,
-                  initialZoom: 12.5,
-                  onTap: (_, punto) {
-                    if (_vista == _VistaMapa.calor) _mostrarResumenZona(punto);
-                  },
-                ),
-                children: [
-                  TileLayer(
-                    urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
-                    userAgentPackageName: 'com.example.acasafe_app',
-                  ),
-                  if (_vista == _VistaMapa.marcadores)
-                    MarkerLayer(
-                      markers: _marcadoresDesdeReportes(visibles),
-                    )
-                  else
-                    CapaCalor(
-                      puntosPorCategoria: _puntosPorCategoria(visibles),
-                    ),
-                ],
-              ),
-              Positioned(
-                top: 12,
-                left: 0,
-                right: 0,
-                child: Column(
+              Expanded(
+                child: Stack(
                   children: [
-                    _selectorVista(),
-                    const SizedBox(height: 8),
-                    _contador(visibles.length, _reportes.length),
+                    Positioned.fill(
+                      child: _mapaConCapas(esAncho, margenInferior),
+                    ),
+                    // Fuera del StreamBuilder: el botón de reportar está
+                    // visible aunque los reportes sigan cargando.
+                    // En celular va centrado abajo; en pantallas anchas,
+                    // en la esquina inferior derecha.
+                    if (esAncho)
+                      Positioned(
+                        right: 16,
+                        bottom: 16 + margenInferior,
+                        child: _botonReportar(),
+                      )
+                    else
+                      Positioned(
+                        left: 16,
+                        right: 16,
+                        bottom: 16 + margenInferior,
+                        child: Center(child: _botonReportar()),
+                      ),
                   ],
                 ),
               ),
-              Positioned(
-                left: 12,
-                bottom: 12,
-                child: _leyenda(),
-              ),
+              if (esAncho && _resumenAbierto) _panelLateralResumen(),
             ],
           );
         },
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const NewReportScreen()),
-          );
-        },
-        icon: const Icon(Icons.add_alert),
-        label: const Text('Reportar'),
-      ),
+    );
+  }
+
+  Widget _mapaConCapas(bool esAncho, double margenInferior) {
+    return StreamBuilder<List<Reporte>>(
+      stream: _streamReportes,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(child: Text('Error al cargar reportes: ${snapshot.error}'));
+        }
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        _reportes = snapshot.data!;
+        final visibles = _filtros.aplicar(_reportes);
+        _visibles = visibles;
+
+        // En celular la leyenda va arriba del botón de reportar (que
+        // ocupa el centro); en pantallas anchas, a su misma altura.
+        final bajoLeyenda =
+            margenInferior + (esAncho ? 12 : 16 + _altoBotonReportar + 12);
+
+        // ¡Aquí está el mapa de OpenStreetMap!
+        return Stack(
+          children: [
+            // Al cambiar de vista solo cambia la última capa; el
+            // FlutterMap es el mismo, así que conserva zoom y posición.
+            FlutterMap(
+              options: MapOptions(
+                initialCenter: _centroAcapulco,
+                initialZoom: 12.5,
+                onTap: (_, punto) {
+                  if (_vista == _VistaMapa.calor) _mostrarResumenZona(punto);
+                },
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+                  userAgentPackageName: 'com.example.acasafe_app',
+                ),
+                if (_vista == _VistaMapa.marcadores)
+                  MarkerLayer(
+                    markers: _marcadoresDesdeReportes(visibles),
+                  )
+                else
+                  CapaCalor(
+                    puntosPorCategoria: _puntosPorCategoria(visibles),
+                  ),
+              ],
+            ),
+            // Columna superior: selector, contador y "Resumen reciente".
+            // Su límite inferior deja libres la leyenda (plegada) y el
+            // botón de reportar, para que el resumen abierto no los tape.
+            // La Column solo recibe toques sobre sus hijos; el resto del
+            // mapa sigue respondiendo.
+            Positioned(
+              top: 12,
+              left: 12,
+              right: 12,
+              bottom: bajoLeyenda + (esAncho ? 0 : _altoLeyendaPlegada + 8),
+              child: Column(
+                children: [
+                  _selectorVista(),
+                  const SizedBox(height: 8),
+                  _contador(visibles.length, _reportes.length),
+                  const SizedBox(height: 8),
+                  Flexible(child: _resumenDesplegable(esAncho)),
+                ],
+              ),
+            ),
+            Positioned(
+              left: 12,
+              bottom: bajoLeyenda,
+              child: _leyenda(),
+            ),
+          ],
+        );
+      },
     );
   }
 }
