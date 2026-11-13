@@ -110,6 +110,10 @@ Color colorPorCategoria(CategoriaReporte categoria) {
   }
 }
 
+/// Valor que se guarda en `colonia` cuando no se pudo detectar la colonia
+/// exacta. Las estadísticas lo tratan como "colonia no identificada".
+const String coloniaPorDefecto = 'Acapulco de Juárez';
+
 /// Centro aproximado de Acapulco de Juárez, para centrar el mapa al abrir
 /// la app antes de obtener la ubicación real del usuario.
 const double acapulcoLat = 16.8531;

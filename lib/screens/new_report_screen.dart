@@ -1,15 +1,14 @@
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../models/reporte.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
+import '../services/geocodificacion_service.dart';
 import '../services/storage_service.dart';
 import '../utils/constants.dart';
 
@@ -36,6 +35,7 @@ class _NewReportScreenState extends State<NewReportScreen> {
   final _firestoreService = FirestoreService();
   final _storageService = StorageService();
   final _authService = AuthService();
+  final _geocodificacionService = GeocodificacionService();
 
   CategoriaReporte? _categoriaSeleccionada;
   String? _tipoSeleccionado;
@@ -67,25 +67,15 @@ class _NewReportScreenState extends State<NewReportScreen> {
       );
       if (!mounted) return;
       // Se guarda la posición antes del geocoding para no perderla si
-      // este falla (en web, geocoding no tiene implementación).
+      // este tarda o falla.
       setState(() => _ubicacionActual = pos);
 
-      var colonia = 'Acapulco de Juárez';
-      if (!kIsWeb) {
-        try {
-          final lugares = await placemarkFromCoordinates(
-            pos.latitude,
-            pos.longitude,
-          );
-          if (lugares.isNotEmpty) {
-            colonia = lugares.first.subLocality?.isNotEmpty == true
-                ? lugares.first.subLocality!
-                : lugares.first.locality ?? 'Acapulco de Juárez';
-          }
-        } catch (_) {
-          // Sin colonia exacta; se queda el valor por defecto.
-        }
-      }
+      // En web usa Nominatim y en móvil el paquete geocoding; si falla,
+      // regresa 'Acapulco de Juárez' (nunca lanza error).
+      final colonia = await _geocodificacionService.coloniaDesdeCoordenadas(
+        pos.latitude,
+        pos.longitude,
+      );
       if (!mounted) return;
       setState(() => _colonia = colonia);
     } catch (_) {

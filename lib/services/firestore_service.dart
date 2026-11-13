@@ -28,6 +28,38 @@ class FirestoreService {
             snap.docs.map((d) => Reporte.fromMap(d.id, d.data())).toList());
   }
 
+  /// Reportes con fechaHora en [desde, hasta) — incluye `desde`, excluye
+  /// `hasta`. Es la fuente de datos de las estadísticas.
+  ///
+  /// La consulta filtra solo por fechaHora para no necesitar índices
+  /// compuestos; los de estado 'falso' se quitan aquí, del lado del
+  /// cliente, salvo que se pida [incluirFalsos].
+  Stream<List<Reporte>> reportesEnRango(
+    DateTime desde,
+    DateTime hasta, {
+    bool incluirFalsos = false,
+  }) {
+    return _reportes
+        .where('fechaHora', isGreaterThanOrEqualTo: Timestamp.fromDate(desde))
+        .where('fechaHora', isLessThan: Timestamp.fromDate(hasta))
+        .orderBy('fechaHora', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs
+            .map((d) => Reporte.fromMap(d.id, d.data()))
+            .where((r) => incluirFalsos || r.estado != EstadoReporte.falso)
+            .toList());
+  }
+
+  /// Todos los reportes, en cualquier estado, del más reciente al más
+  /// antiguo. Pensado para el panel del administrador.
+  Stream<List<Reporte>> todosLosReportes() {
+    return _reportes
+        .orderBy('fechaHora', descending: true)
+        .snapshots()
+        .map((snap) =>
+            snap.docs.map((d) => Reporte.fromMap(d.id, d.data())).toList());
+  }
+
   /// Reportes de una colonia específica — útil para la pantalla de
   /// detalle por zona y, después, para alimentar las estadísticas.
   Stream<List<Reporte>> reportesPorColonia(String colonia) {
