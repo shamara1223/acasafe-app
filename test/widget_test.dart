@@ -5,6 +5,7 @@
 // que todavía no está configurado en el proyecto.
 
 import 'package:acasafe/models/reporte.dart';
+import 'package:acasafe/models/usuario.dart';
 import 'package:acasafe/utils/constants.dart';
 import 'package:acasafe/utils/filtros_reporte.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -38,6 +39,45 @@ void main() {
     test('valores desconocidos o vacíos caen en "otro"', () {
       expect(categoriaDesdeTexto('inventada'), CategoriaReporte.otro);
       expect(categoriaDesdeTexto(null), CategoriaReporte.otro);
+    });
+  });
+
+  group('Usuario', () {
+    test('reconoce los roles actuales', () {
+      for (final r in RolUsuario.values) {
+        expect(rolDesdeTexto(r.name), r);
+      }
+    });
+
+    test('rol desconocido o faltante se trata como ciudadano', () {
+      expect(rolDesdeTexto('superadmin'), RolUsuario.ciudadano);
+      expect(rolDesdeTexto('Admin'), RolUsuario.ciudadano);
+      expect(rolDesdeTexto(null), RolUsuario.ciudadano);
+      expect(rolDesdeTexto(true), RolUsuario.ciudadano);
+      expect(Usuario.fromMap('u1', {}).rol, RolUsuario.ciudadano);
+    });
+
+    test('fromMap lee el rol admin y la fecha en ambos formatos', () {
+      final fecha = DateTime(2026, 11, 1, 10);
+      final conTimestamp = Usuario.fromMap('u1', {
+        'email': 'a@b.c',
+        'rol': 'admin',
+        'fechaRegistro': Timestamp.fromDate(fecha),
+      });
+      expect(conTimestamp.esAdmin, isTrue);
+      expect(conTimestamp.email, 'a@b.c');
+      expect(conTimestamp.fechaRegistro, fecha);
+
+      final conTexto = Usuario.fromMap('u2', {
+        'fechaRegistro': fecha.toIso8601String(),
+      });
+      expect(conTexto.esAdmin, isFalse);
+      expect(conTexto.fechaRegistro, fecha);
+    });
+
+    test('toMap guarda el rol como texto', () {
+      final usuario = Usuario(uid: 'u1', fechaRegistro: DateTime(2026));
+      expect(usuario.toMap()['rol'], 'ciudadano');
     });
   });
 

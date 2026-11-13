@@ -1,19 +1,33 @@
 rules_version = '2';
 
-// Reglas de seguridad para la colección `reportes` de AcaSafe.
+// Reglas de seguridad de Firestore para AcaSafe.
 // Se suben a Firebase con: firebase deploy --only firestore:rules
 //
 // Lógica:
-// - Cualquiera que haya iniciado sesión puede LEER los reportes (la app
-//   es de consulta pública para habitantes/turistas).
-// - Solo un usuario autenticado puede CREAR un reporte, y solo a nombre
-//   de sí mismo (usuarioId debe coincidir con su uid).
-// - Nadie puede editar o borrar un reporte directamente desde el cliente
-//   (eso evita que alguien "limpie" su propio reporte falso); los votos
-//   y cambios de estado se hacen con incrementos controlados desde
-//   FirestoreService, nunca sobrescribiendo el documento completo.
+// - reportes: cualquiera que haya iniciado sesión puede LEERLOS (la app
+//   es de consulta pública para habitantes/turistas) y CREAR uno a nombre
+//   de sí mismo (usuarioId debe coincidir con su uid). Cualquier usuario
+//   puede votar (votosUtil / votosFalso), pero solo un admin puede cambiar
+//   el estado. Nadie edita el contenido original ni borra reportes.
+// - usuarios: cada quien lee su propio documento; un admin lee todos.
+//   El documento se crea siempre con rol 'ciudadano' y el dueño nunca
+//   puede cambiar su rol: un admin se nombra a mano desde la consola de
+//   Firebase (o con el Admin SDK), nunca desde la app.
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // true si quien hace la petición tiene rol 'admin' en usuarios/{uid}.
+    // Si el documento no existe o no tiene rol, no es admin.
+    function isAdmin() {
+      return request.auth != null
+        && get(/databases/$(database)/documents/usuarios/$(request.auth.uid))
+             .data.get('rol', '') == 'admin';
+    }
+
+    // Campos que cambian en una actualización.
+    function camposCambiados() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
 
     match /reportes/{reporteId} {
       allow read: if request.auth != null;
@@ -22,18 +36,35 @@ service cloud.firestore {
         && request.resource.data.usuarioId == request.auth.uid
         && request.resource.data.estado == 'pendiente';
 
-      // Solo permite actualizar los campos de votos o el estado
-      // (moderación), nunca el contenido original del reporte.
+      // Cualquier usuario autenticado: solo los votos.
+      // Admin: además el estado (moderación).
+      // Nunca el contenido original del reporte.
       allow update: if request.auth != null
-        && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['votosUtil', 'votosFalso', 'estado']);
+        && (
+          camposCambiados().hasOnly(['votosUtil', 'votosFalso'])
+          || (camposCambiados().hasOnly(['votosUtil', 'votosFalso', 'estado'])
+              && isAdmin())
+        );
 
       allow delete: if false; // nadie borra reportes desde la app
     }
 
     match /usuarios/{uid} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == uid;
+      allow read: if request.auth != null
+        && (request.auth.uid == uid || isAdmin());
+
+      // Solo el dueño crea su documento, y siempre como 'ciudadano'.
+      allow create: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.rol == 'ciudadano';
+
+      // El dueño puede actualizar sus datos, pero nunca el campo rol
+      // (ni cambiarlo, ni agregarlo, ni quitarlo).
+      allow update: if request.auth != null
+        && request.auth.uid == uid
+        && !camposCambiados().hasAny(['rol']);
+
+      allow delete: if false; // nadie borra usuarios desde la app
     }
   }
 }
