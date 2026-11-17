@@ -103,7 +103,11 @@ class EstadisticasService {
       porCategoria: porCategoria,
       porTipo: Map.fromEntries(_ordenadoPorConteo(porTipo)),
       porEstado: porEstado,
-      topColonias: _topColonias(porColonia, limiteColonias),
+      topColonias: _topColonias(
+        porColonia,
+        limiteColonias,
+        desglose: porColoniaYCategoria,
+      ),
       topColoniasPorCategoria: {
         for (final c in CategoriaReporte.values)
           c: _topColonias(porColoniaYCategoria[c]!, limiteColonias),
@@ -297,11 +301,25 @@ class EstadisticasService {
       });
   }
 
-  List<ConteoColonia> _topColonias(Map<String, int> conteos, int limite) {
-    return _ordenadoPorConteo(conteos)
-        .take(limite)
-        .map((e) => ConteoColonia(e.key, e.value))
-        .toList();
+  /// [desglose] (categoría → colonia → conteo) llena el desglose por
+  /// categoría de cada colonia del ranking.
+  List<ConteoColonia> _topColonias(
+    Map<String, int> conteos,
+    int limite, {
+    Map<CategoriaReporte, Map<String, int>>? desglose,
+  }) {
+    return _ordenadoPorConteo(conteos).take(limite).map((e) {
+      return ConteoColonia(
+        e.key,
+        e.value,
+        porCategoria: desglose == null
+            ? const {}
+            : {
+                for (final c in CategoriaReporte.values)
+                  if ((desglose[c]![e.key] ?? 0) > 0) c: desglose[c]![e.key]!,
+              },
+      );
+    }).toList();
   }
 
   /// Un punto por día (o por bloque de 7 días), empezando en el día de

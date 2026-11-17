@@ -9,7 +9,12 @@ class ConteoColonia {
   final String colonia;
   final int conteo;
 
-  const ConteoColonia(this.colonia, this.conteo);
+  /// Desglose de [conteo] por categoría (solo las que tienen reportes).
+  /// Solo viene lleno en [EstadisticasReportes.topColonias]; en los
+  /// rankings por categoría queda vacío porque no hace falta.
+  final Map<CategoriaReporte, int> porCategoria;
+
+  const ConteoColonia(this.colonia, this.conteo, {this.porCategoria = const {}});
 }
 
 /// Si la tendencia está agrupada por día o por semana.

@@ -110,6 +110,28 @@ Color colorPorCategoria(CategoriaReporte categoria) {
   }
 }
 
+/// Nombre legible, ícono y color de un estado de moderación.
+class InfoEstado {
+  final String nombre;
+  final IconData icono;
+  final Color color;
+
+  const InfoEstado(this.nombre, this.icono, this.color);
+}
+
+/// Nombre, ícono y color de cada estado, para las etiquetas de la lista
+/// de reportes del admin y la gráfica de distribución por estado.
+/// Son tonos oscuros para que el texto de ese color se lea sobre blanco.
+const Map<EstadoReporte, InfoEstado> infoEstado = {
+  EstadoReporte.pendiente:
+      InfoEstado('Pendiente', Icons.hourglass_empty, Color(0xFFB26A00)),
+  EstadoReporte.verificado:
+      InfoEstado('Verificado', Icons.verified, Color(0xFF2E7D32)),
+  EstadoReporte.falso: InfoEstado('Falso', Icons.block, Color(0xFFC62828)),
+  EstadoReporte.resuelto:
+      InfoEstado('Resuelto', Icons.task_alt, Color(0xFF1565C0)),
+};
+
 /// Valor que se guarda en `colonia` cuando no se pudo detectar la colonia
 /// exacta. Las estadísticas lo tratan como "colonia no identificada".
 const String coloniaPorDefecto = 'Acapulco de Juárez';
