@@ -38,6 +38,10 @@ dependencies:
   http: ^1.6.0
   fl_chart: ^1.3.1
 
+  # Informes PDF (funcionan también en Flutter Web)
+  pdf: ^3.13.1
+  printing: ^5.15.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -46,5 +50,8 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  # assets:
-  #   - assets/images/
+  assets:
+    # Fuente con acentos y ñ para los informes PDF (pdf_service.dart).
+    # Va como asset para no descargarla en cada generación.
+    - assets/fonts/Roboto-Regular.ttf
+    - assets/fonts/Roboto-Bold.ttf

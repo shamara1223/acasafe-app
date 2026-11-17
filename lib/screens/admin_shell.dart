@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/periodo_estadisticas.dart';
-import '../services/auth_service.dart';
+import 'admin/informes_screen.dart';
 import 'admin/panel_screen.dart';
 import 'admin/reportes_admin_screen.dart';
 import 'home_map_screen.dart';
@@ -23,11 +23,15 @@ class _AdminShellState extends State<AdminShell> {
   int _indice = 0;
 
   // Periodo que el panel mandó a Informes con "Generar informe PDF".
+  // La versión cambia en cada envío para que Informes lo vuelva a
+  // preseleccionar aunque sea el mismo periodo.
   PeriodoEstadisticas? _periodoInforme;
+  int _versionInforme = 0;
 
   void _irAInformes(PeriodoEstadisticas periodo) {
     setState(() {
       _periodoInforme = periodo;
+      _versionInforme++;
       _indice = _indiceInformes;
     });
   }
@@ -43,12 +47,9 @@ class _AdminShellState extends State<AdminShell> {
           PanelScreen(onGenerarInforme: _irAInformes),
           const HomeMapScreen(),
           const ReportesAdminScreen(),
-          _SeccionProximamente(
-            titulo: 'Informes',
-            icono: Icons.bar_chart,
-            detalle: _periodoInforme == null
-                ? null
-                : 'Periodo seleccionado: ${_periodoInforme!.nombre}',
+          InformesScreen(
+            periodoInicial: _periodoInforme,
+            versionPeriodo: _versionInforme,
           ),
         ],
       ),
@@ -77,53 +78,6 @@ class _AdminShellState extends State<AdminShell> {
             label: 'Informes',
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Sección todavía sin contenido. Incluye el botón de cerrar sesión para
-/// que esté disponible desde cualquier pestaña (el mapa trae el suyo).
-class _SeccionProximamente extends StatelessWidget {
-  final String titulo;
-  final IconData icono;
-
-  /// Línea extra debajo de "Próximamente" (ej. el periodo elegido).
-  final String? detalle;
-
-  const _SeccionProximamente({
-    required this.titulo,
-    required this.icono,
-    this.detalle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tema = Theme.of(context);
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(titulo),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Cerrar sesión',
-            onPressed: () => AuthService().cerrarSesion(),
-          ),
-        ],
-      ),
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icono, size: 64, color: tema.colorScheme.outline),
-            const SizedBox(height: 12),
-            Text('Próximamente', style: tema.textTheme.titleLarge),
-            if (detalle != null) ...[
-              const SizedBox(height: 8),
-              Text(detalle!, style: tema.textTheme.bodyMedium),
-            ],
-          ],
-        ),
       ),
     );
   }

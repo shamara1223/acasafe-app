@@ -8,9 +8,9 @@ import '../../services/estadisticas_service.dart';
 import '../../services/firestore_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/filtros_reporte.dart';
-import '../../utils/selector_fechas.dart';
 import '../../widgets/etiqueta_estado.dart';
 import '../../widgets/graficas_estadisticas.dart';
+import '../../widgets/selector_periodo.dart';
 
 /// Sección "Panel" del administrador: estadísticas de todo lo reportado
 /// en el sistema. Solo se llega aquí desde AdminShell, que main.dart
@@ -104,21 +104,6 @@ class _PanelContenidoState extends State<PanelContenido> {
 
   PeriodoEstadisticas _periodo =
       const PeriodoEstadisticas(TipoPeriodo.ultimos30);
-
-  Future<void> _elegirRangoPersonalizado() async {
-    final actual = _periodo.tipo == TipoPeriodo.personalizado
-        ? DateTimeRange(start: _periodo.primerDia!, end: _periodo.ultimoDia!)
-        : null;
-    final rango = await elegirRangoFechas(
-      context,
-      inicial: actual,
-      hoy: widget.ahora,
-    );
-    if (rango == null || !mounted) return;
-    setState(() {
-      _periodo = PeriodoEstadisticas.personalizado(rango.start, rango.end);
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -216,30 +201,11 @@ class _PanelContenidoState extends State<PanelContenido> {
   // -------------------------------------------------------------------
 
   Widget _selectorPeriodo() {
-    final esPersonalizado = _periodo.tipo == TipoPeriodo.personalizado;
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        for (final tipo in TipoPeriodo.values)
-          if (tipo != TipoPeriodo.personalizado)
-            ChoiceChip(
-              label: Text(tipo.etiqueta),
-              selected: _periodo.tipo == tipo,
-              onSelected: (_) =>
-                  setState(() => _periodo = PeriodoEstadisticas(tipo)),
-            ),
-        ChoiceChip(
-          avatar: const Icon(Icons.date_range, size: 18),
-          showCheckmark: false,
-          // Con un rango elegido el chip muestra las fechas.
-          label: Text(
-            esPersonalizado ? _periodo.nombre : TipoPeriodo.personalizado.etiqueta,
-          ),
-          selected: esPersonalizado,
-          onSelected: (_) => _elegirRangoPersonalizado(),
-        ),
+    return SelectorPeriodo(
+      periodo: _periodo,
+      hoy: widget.ahora,
+      onCambio: (periodo) => setState(() => _periodo = periodo),
+      acciones: [
         FilledButton.tonalIcon(
           onPressed: () => widget.onGenerarInforme(_periodo),
           icon: const Icon(Icons.picture_as_pdf),
